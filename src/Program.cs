@@ -21,7 +21,7 @@ if (command == ".dbinfo")
      databaseFile.Read(pageSizeBytes, 0, 2);
      var pageSize = ReadUInt16BigEndian(pageSizeBytes);
      Console.WriteLine($"database page size: {pageSize}");
-     databaseFile.Seek(102, SeekOrigin.Begin); // Skip to the first 102 bytes which contains the file header and 2 bytes of the btree page header
+     databaseFile.Seek(103, SeekOrigin.Begin); // Skip to the first 102 bytes which contains the file header and 2 bytes of the btree page header
      byte[] numOfCellsBytes = new byte[2];
      databaseFile.Read(numOfCellsBytes, 0, 2);
      var numOfCells = ReadUInt16BigEndian(numOfCellsBytes);
