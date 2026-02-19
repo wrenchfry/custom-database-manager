@@ -25,7 +25,7 @@ if (command == ".dbinfo")
      byte[] numOfCellsBytes = new byte[2];
      databaseFile.Read(numOfCellsBytes, 0, 2);
      var numOfCells = ReadUInt16BigEndian(numOfCellsBytes);
-     Console.WriteLine($"number of cells: {numOfCells}");
+     Console.WriteLine($"number of tables: {numOfCells}");
 }
 else
 {
