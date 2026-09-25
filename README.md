@@ -1,6 +1,6 @@
 [![progress-banner](https://backend.codecrafters.io/progress/sqlite/5216faa8-d3fd-4bf1-83b0-543a5ba90cc5)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 
-This is a starting point for C# solutions to the
+This project began as the C# starter repository for Codecrafters'
 ["Build Your Own SQLite" Challenge](https://codecrafters.io/challenges/sqlite).
 
 In this challenge, you'll build a barebones SQLite implementation that supports
@@ -13,7 +13,17 @@ and more.
 **Note**: If you're viewing this repo on GitHub, head over to
 [codecrafters.io](https://codecrafters.io) to try the challenge.
 
-# Passing the first stage
+# What it does
+
+sqlite-clone is a dependency-free, read-only SQLite 3 inspector. It can show
+metadata, list user tables, print schemas, and run SELECT queries with selected
+columns, *, count(*), and one equality WHERE clause. It reads table B-tree
+interior and leaf pages, including overflow payload pages.
+
+It deliberately does not write databases or implement transactions, joins,
+ordering, or the full SQL language.
+
+# Original tutorial notes
 
 The entry point for your SQLite implementation is in `src/Program.cs`. Study and
 uncomment the relevant code, and push your changes to pass the first stage:
