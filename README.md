@@ -1,86 +1,58 @@
-[![progress-banner](https://backend.codecrafters.io/progress/sqlite/5216faa8-d3fd-4bf1-83b0-543a5ba90cc5)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# Research Notebook
 
-This project began as the C# starter repository for Codecrafters'
-["Build Your Own SQLite" Challenge](https://codecrafters.io/challenges/sqlite).
+Research Notebook is a local-first study workspace for collecting notes, organising them with tags, and turning ideas into flashcards for active recall. Its data is stored in a SQLite database, and the app includes a small custom SQLite page reader that can inspect that database.
 
-In this challenge, you'll build a barebones SQLite implementation that supports
-basic SQL queries like `SELECT`. Along the way we'll learn about
-[SQLite's file format](https://www.sqlite.org/fileformat.html), how indexed data
-is
-[stored in B-trees](https://jvns.ca/blog/2014/10/02/how-does-sqlite-work-part-2-btrees/)
-and more.
+## Features
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+- Create and edit notes with titles, content, and comma-separated tags.
+- Search across saved notes.
+- Create flashcards from a note and review cards that are due.
+- Use simple review ratings to schedule the next review.
+- Inspect the local SQLite database's tables, page size, columns, and row counts.
+- Run the included command-line SQLite inspector for `.dbinfo`, `.tables`, `.schema`, and basic `SELECT` queries.
 
-# What it does
+## Tech stack
 
-sqlite-clone is a dependency-free, read-only SQLite 3 inspector. It can show
-metadata, list user tables, print schemas, and run SELECT queries with selected
-columns, *, count(*), and one equality WHERE clause. It reads table B-tree
-interior and leaf pages, including overflow payload pages.
+- ASP.NET Core / .NET 10
+- SQLite via `Microsoft.Data.Sqlite`
+- Vanilla HTML, CSS, and JavaScript
 
-It deliberately does not write databases or implement transactions, joins,
-ordering, or the full SQL language.
+## Getting started
 
-# Original tutorial notes
+### Prerequisites
 
-The entry point for your SQLite implementation is in `src/Program.cs`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+- .NET SDK 10.0 or later
 
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
+### Run the web app
+
+```bash
+dotnet run
 ```
 
-Time to move on to the next stage!
+Open the local URL printed by ASP.NET Core. On first launch, the application creates `data/notebook.db` and adds a welcome note.
 
-# Stage 2 & beyond
+### Use the SQLite inspector
 
-Note: This section is for stages 2 and beyond.
+The same executable also accepts a database file and a command:
 
-1. Ensure you have `dotnet (9.0)` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `src/Program.cs`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
-
-# Sample Databases
-
-To make it easy to test queries locally, we've added a sample database in the
-root of this repository: `sample.db`.
-
-This contains two tables: `apples` & `oranges`. You can use this to test your
-implementation for the first 6 stages.
-
-You can explore this database by running queries against it like this:
-
-```sh
-$ sqlite3 sample.db "select id, name from apples"
-1|Granny Smith
-2|Fuji
-3|Honeycrisp
-4|Golden Delicious
+```bash
+dotnet run -- sample.db .dbinfo
+dotnet run -- sample.db .tables
+dotnet run -- sample.db ".schema"
+dotnet run -- sample.db "SELECT id, name FROM apples WHERE id = 1"
 ```
 
-There are two other databases that you can use:
+The custom reader supports table B-tree interior and leaf pages, overflow payload pages, selected columns or `*`, `count(*)`, and a single equality `WHERE` condition. It is intentionally read-only and is not a complete SQLite implementation.
 
-1. `superheroes.db`:
-   - This is a small version of the test database used in the table-scan stage.
-   - It contains one table: `superheroes`.
-   - It is ~1MB in size.
-1. `companies.db`:
-   - This is a small version of the test database used in the index-scan stage.
-   - It contains one table: `companies`, and one index: `idx_companies_country`
-   - It is ~7MB in size.
+## Project structure
 
-These aren't included in the repository because they're large in size. You can
-download them by running this script:
-
-```sh
-./download_sample_databases.sh
+```text
+src/             ASP.NET Core endpoints and SQLite reader
+wwwroot/         Browser interface
+data/            Runtime SQLite database (ignored by Git)
+sample.db        Sample database for the command-line inspector
 ```
 
-If the script doesn't work for some reason, you can download the databases
-directly from
-[codecrafters-io/sample-sqlite-databases](https://github.com/codecrafters-io/sample-sqlite-databases).
+## Data and privacy
+
+Notes and flashcards are stored locally in `data/notebook.db`. The database is excluded from version control, so your study data is not committed with the project.

@@ -13,7 +13,9 @@ public sealed class SqliteDatabase : IDisposable
 
     public SqliteDatabase(string path)
     {
-        bytes = File.ReadAllBytes(path);
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        bytes = new byte[stream.Length];
+        stream.ReadExactly(bytes);
         if (bytes.Length < 100 || Encoding.ASCII.GetString(bytes, 0, 16) != "SQLite format 3\0")
             throw new InvalidDataException("The file is not a SQLite 3 database.");
         PageSize = Read16(16) is 1 ? 65536 : Read16(16);
