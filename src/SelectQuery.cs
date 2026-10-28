@@ -3,6 +3,9 @@ using System.Text.RegularExpressions;
 
 namespace CodecraftersSqlite;
 
+/// <summary>
+/// Represents the deliberately small SELECT grammar supported by the custom reader.
+/// </summary>
 public sealed record SelectQuery(IReadOnlyList<string> Columns, string Table, WhereFilter? Filter)
 {
     public bool IsCount => Columns is ["count(*)"];
@@ -24,7 +27,7 @@ public sealed record WhereFilter(string Column, object? Expected)
         var value = match.Groups["value"].Value.Trim();
         object? expected = value.Equals("null", StringComparison.OrdinalIgnoreCase) ? null
             : value.Length >= 2 && value[0] == '\'' && value[^1] == '\'' ? value[1..^1].Replace("''", "'")
-            : long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer) ? integer
+            : long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer) ? (object)integer
             : double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ? number
             : throw new ArgumentException("WHERE values must be quoted text, NULL, or a number.");
         return new WhereFilter(SqliteDatabase.Unquote(match.Groups["column"].Value), expected);
@@ -35,8 +38,10 @@ public sealed record WhereFilter(string Column, object? Expected)
         var actual = row.Raw(Column, columns);
         return (actual, Expected) switch
         {
-            (null, null) => true, (long left, long right) => left == right,
-            (double left, double right) => left.Equals(right), (long left, double right) => left.Equals(right),
+            (null, null) => true,
+            (long left, long right) => left == right,
+            (double left, double right) => left.Equals(right),
+            (long left, double right) => left.Equals(right),
             (double left, long right) => left.Equals(right),
             _ => string.Equals(SqliteRow.Format(actual), SqliteRow.Format(Expected), StringComparison.Ordinal)
         };
