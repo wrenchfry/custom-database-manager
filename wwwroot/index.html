@@ -1,4 +1,131 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Research Notebook</title><link rel="stylesheet" href="style.css"></head><body>
-<header><strong>Research Notebook <small>local study workspace</small></strong><div><button id="inspect">Storage</button><button id="new" class="primary">New note</button></div></header>
-<main><aside><input id="search" placeholder="Search notes"><div id="notes"></div></aside><section><input id="title" placeholder="Note title"><input id="tags" placeholder="tags, separated by commas"><textarea id="content" placeholder="Start writing..."></textarea><footer><span id="state">Saved locally</span><button id="card">Add flashcard</button></footer></section><aside class="review"><b>Due today <span id="count">0</span></b><div id="review"></div><div id="ratings"><button data-rate="0">Again</button><button data-rate="1">Hard</button><button data-rate="2">Good</button><button data-rate="3">Easy</button></div></aside></main>
-<dialog id="cardbox"><form method="dialog"><h2>Create flashcard</h2><label>Question<input id="front"></label><label>Answer<textarea id="back"></textarea></label><button>Cancel</button><button id="create" class="primary">Create</button></form></dialog><dialog id="store"><h2>Storage inspector</h2><p>Read by the custom SQLite page parser.</p><pre id="data"></pre><button onclick="this.parentElement.close()">Close</button></dialog><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Explore SQLite database files through a custom read-only parser."
+    />
+    <title>SQLite Under the Hood</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">SQLite <span>Under the Hood</span></a>
+      <p>Read a SQLite file through a custom parser. Nothing is modified.</p>
+    </header>
+
+    <main>
+      <section class="upload-panel" aria-labelledby="upload-title">
+        <div>
+          <p class="eyebrow">CUSTOM SQLITE FILE READER</p>
+          <h1 id="upload-title">Inspect the structure behind a database.</h1>
+          <p class="muted">
+            Open a local SQLite file to examine headers, tables, B-tree pages,
+            records, and a limited safe subset of <code>SELECT</code>.
+          </p>
+        </div>
+        <form id="upload-form">
+          <label class="file-picker" for="database-file"
+            >Choose a SQLite database<input
+              id="database-file"
+              name="file"
+              type="file"
+              accept=".db,.sqlite,.sqlite3"
+              required
+          /></label>
+          <button class="primary" type="submit">Open database</button>
+          <p class="hint">
+            .db, .sqlite, or .sqlite3 · maximum 10 MB · read-only
+          </p>
+        </form>
+      </section>
+
+      <p id="status" class="status" aria-live="polite">
+        Choose a database file to begin.
+      </p>
+
+      <section id="workspace" hidden>
+        <section class="summary" aria-labelledby="summary-title">
+          <div>
+            <p class="eyebrow">OPEN DATABASE</p>
+            <h2 id="summary-title"><span id="file-name">—</span></h2>
+          </div>
+          <dl id="metadata" class="metadata"></dl>
+        </section>
+
+        <div class="workspace-grid">
+          <aside class="panel table-panel" aria-labelledby="tables-title">
+            <h2 id="tables-title">Tables</h2>
+            <p class="muted">Schemas discovered by the custom reader.</p>
+            <div id="tables"></div>
+          </aside>
+
+          <section class="main-panel">
+            <section class="panel" aria-labelledby="query-title">
+              <div class="panel-heading">
+                <h2 id="query-title">Limited query runner</h2>
+                <span>SELECT only</span>
+              </div>
+              <p class="muted">
+                Supports selected columns, <code>count(*)</code>, and one
+                equality <code>WHERE</code> condition. Results are capped at 500
+                rows.
+              </p>
+              <form id="query-form">
+                <label class="sr-only" for="sql">SQL query</label>
+                <textarea id="sql" spellcheck="false">
+SELECT * FROM apples</textarea>
+                <button class="primary" type="submit">
+                  Run with custom reader
+                </button>
+              </form>
+              <div id="query-output" class="output empty">
+                Choose a table or run a supported query.
+              </div>
+            </section>
+
+            <section class="panel" aria-labelledby="tree-title">
+              <div class="panel-heading">
+                <h2 id="tree-title">Table B-tree</h2>
+                <span id="tree-label">Select a table</span>
+              </div>
+              <p class="muted">
+                Each card is a page visited while traversing the selected
+                table’s B-tree.
+              </p>
+              <div id="tree-output" class="output empty">
+                No table selected.
+              </div>
+            </section>
+          </section>
+
+          <aside class="panel page-panel" aria-labelledby="page-title">
+            <h2 id="page-title">Page inspector</h2>
+            <form id="page-form" class="page-form">
+              <label for="page-number">Page number</label>
+              <div>
+                <input
+                  id="page-number"
+                  type="number"
+                  min="1"
+                  value="1"
+                /><button type="submit">Inspect</button>
+              </div>
+            </form>
+            <div id="page-output" class="output empty">
+              Inspect a page to view its B-tree type, cells, and raw bytes.
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      Built as a read-only SQLite file-format explorer. It does not use SQLite
+      to read the uploaded database.
+    </footer>
+    <script src="app.js"></script>
+  </body>
+</html>
