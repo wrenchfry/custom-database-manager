@@ -1,5 +1,7 @@
-# Database files used for testing
+# Local SQLite files
 *.db
+*.sqlite
+*.sqlite3
 data/uploads/
 
 ## Ignore Visual Studio temporary files, build results, and

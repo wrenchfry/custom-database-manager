@@ -1,15 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
-    <RootNamespace>codecrafters_sqlite</RootNamespace>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SqliteUnderTheHood</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
+    <Content Remove="tests\**" />
+    <EmbeddedResource Remove="tests\**" />
+    <None Remove="tests\**" />
   </ItemGroup>
-
 </Project>
