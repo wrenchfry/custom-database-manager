@@ -1,7 +1,7 @@
-using CodecraftersSqlite;
+using SqliteUnderTheHood;
 using Xunit;
 
-namespace CodecraftersSqlite.Tests;
+namespace SqliteUnderTheHood.Tests;
 
 public sealed class SelectQueryTests
 {
@@ -20,6 +20,8 @@ public sealed class SelectQueryTests
     [Theory]
     [InlineData("DELETE FROM apples")]
     [InlineData("SELECT name apples")]
+    [InlineData("SELECT id, * FROM apples")]
+    [InlineData("SELECT id FROM apples WHERE id = 1; DELETE FROM apples")]
     public void ParseRejectsUnsupportedStatements(string query)
     {
         Assert.Throws<ArgumentException>(() => SelectQuery.Parse(query));
@@ -33,5 +35,6 @@ public sealed class SelectQueryTests
         Assert.True(new WhereFilter("id", 1L).Matches(row, ["id", "name"]));
         Assert.True(new WhereFilter("name", "Granny Smith").Matches(row, ["id", "name"]));
         Assert.False(new WhereFilter("id", 2L).Matches(row, ["id", "name"]));
+        Assert.False(new WhereFilter("name", null).Matches(new SqliteRow([1L, null]), ["id", "name"]));
     }
 }
