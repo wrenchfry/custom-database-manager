@@ -1,15 +1,40 @@
-using CodecraftersSqlite;
+using SqliteUnderTheHood;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 
 if (args.Length >= 2)
 {
-    RunInspector(args);
+    try
+    {
+        RunInspector(args);
+    }
+    catch (Exception exception) when (exception is IOException or ArgumentException or NotSupportedException)
+    {
+        Console.Error.WriteLine(exception.Message);
+        Environment.ExitCode = 1;
+    }
+
     return;
 }
 var builder = WebApplication.CreateBuilder(args);
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+});
 builder.Services.AddSingleton<ExplorerStore>();
-builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = 10 * 1024 * 1024);
+builder.Services.AddHostedService<UploadCleanupService>();
+builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = ExplorerStore.MaximumUploadBytes + 64 * 1024);
 
 var app = builder.Build();
 app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
@@ -19,12 +44,14 @@ app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
 }));
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseSession();
 
-app.MapPost("/api/database", async ([FromForm] IFormFile file, ExplorerStore store, CancellationToken cancellationToken) =>
+app.MapPost("/api/database", async ([FromForm] IFormFile file, HttpContext context, ExplorerStore store, CancellationToken cancellationToken) =>
 {
     try
     {
-        return Results.Ok(await store.LoadAsync(file, cancellationToken));
+        context.Session.SetString(ExplorerStore.SessionInitializedKey, "1");
+        return Results.Ok(await store.LoadAsync(context.Session.Id, file, cancellationToken));
     }
     catch (ArgumentException exception)
     {
@@ -36,13 +63,14 @@ app.MapPost("/api/database", async ([FromForm] IFormFile file, ExplorerStore sto
     }
 }).DisableAntiforgery();
 
-app.MapGet("/api/database", (ExplorerStore store) => Execute(() => store.Overview()));
-app.MapPost("/api/query", (QueryRequest request, ExplorerStore store) =>
-    Execute(() => store.RunQuery(request.Sql)));
-app.MapGet("/api/pages/{pageNumber:int}", (int pageNumber, ExplorerStore store) =>
-    Execute(() => store.InspectPage(pageNumber)));
-app.MapGet("/api/tables/{tableName}/tree", (string tableName, ExplorerStore store) =>
-    Execute(() => store.GetTableTree(tableName)));
+app.MapGet("/api/database", (HttpContext context, ExplorerStore store) =>
+    Execute(() => store.Overview(context.Session.Id)));
+app.MapPost("/api/query", (QueryRequest request, HttpContext context, ExplorerStore store) =>
+    Execute(() => store.RunQuery(context.Session.Id, request.Sql)));
+app.MapGet("/api/pages/{pageNumber:int}", (int pageNumber, HttpContext context, ExplorerStore store) =>
+    Execute(() => store.InspectPage(context.Session.Id, pageNumber)));
+app.MapGet("/api/tables/{tableName}/tree", (string tableName, HttpContext context, ExplorerStore store) =>
+    Execute(() => store.GetTableTree(context.Session.Id, tableName)));
 
 app.Run();
 
@@ -105,4 +133,3 @@ static void RunInspector(string[] arguments)
             break;
     }
 }
-

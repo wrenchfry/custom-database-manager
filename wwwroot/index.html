@@ -37,7 +37,8 @@
           /></label>
           <button class="primary" type="submit">Open database</button>
           <p class="hint">
-            .db, .sqlite, or .sqlite3 · maximum 10 MB · read-only
+            .db, .sqlite, or .sqlite3 · maximum 10 MB · read-only · isolated to
+            this browser session; expires after 30 minutes idle
           </p>
         </form>
       </section>
@@ -123,8 +124,8 @@ SELECT * FROM apples</textarea>
     </main>
 
     <footer>
-      Built as a read-only SQLite file-format explorer. It does not use SQLite
-      to read the uploaded database.
+      Uploaded files are isolated by browser session and removed after 30
+      minutes of inactivity. The custom reader never modifies them.
     </footer>
     <script src="app.js"></script>
   </body>

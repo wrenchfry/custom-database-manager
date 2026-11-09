@@ -1,30 +1,36 @@
-namespace CodecraftersSqlite;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 
-public sealed class ExplorerStore
+namespace SqliteUnderTheHood;
+
+public sealed class ExplorerStore : IDisposable
 {
-    private const long MaximumUploadBytes = 10 * 1024 * 1024;
+    public const long MaximumUploadBytes = 10 * 1024 * 1024;
+    public const string SessionInitializedKey = "database-open";
+    private static readonly TimeSpan SessionRetention = TimeSpan.FromMinutes(30);
     private static readonly HashSet<string> SupportedExtensions = [".db", ".sqlite", ".sqlite3"];
     private readonly string uploadsDirectory;
+    private readonly ConcurrentDictionary<string, SessionDatabase> sessions = new(StringComparer.Ordinal);
     private readonly Lock sync = new();
-    private string? currentPath;
-    private string? currentFileName;
 
     public ExplorerStore(IHostEnvironment environment)
     {
-        uploadsDirectory = Path.Combine(environment.ContentRootPath, "data", "uploads");
+        var applicationId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(environment.ContentRootPath)));
+        uploadsDirectory = Path.Combine(Path.GetTempPath(), "sqlite-under-the-hood", applicationId);
         Directory.CreateDirectory(uploadsDirectory);
-
-        // Uploaded databases are temporary read-only inspection copies, not user data to retain.
-        foreach (var uploadedFile in Directory.EnumerateFiles(uploadsDirectory))
-        {
-            File.Delete(uploadedFile);
-        }
+        DeleteExpiredOrphanedUploads();
     }
 
-    public async Task<ExplorerOverview> LoadAsync(IFormFile file, CancellationToken cancellationToken)
+    public async Task<ExplorerOverview> LoadAsync(string sessionId, IFormFile file, CancellationToken cancellationToken)
     {
         ValidateUpload(file);
-        var temporaryPath = Path.Combine(uploadsDirectory, $"{Guid.NewGuid():N}.upload");
+        CleanupExpiredSessions();
+        var session = GetOrCreateSession(sessionId);
+        await session.Gate.WaitAsync(cancellationToken);
+        var token = Guid.NewGuid().ToString("N");
+        var temporaryPath = Path.Combine(uploadsDirectory, $"{token}.upload");
+        var databasePath = Path.Combine(uploadsDirectory, $"{token}.sqlite");
 
         try
         {
@@ -33,61 +39,83 @@ public sealed class ExplorerStore
                 await file.CopyToAsync(destination, cancellationToken);
             }
 
-            using var database = new SqliteDatabase(temporaryPath);
-            var overview = new ExplorerOverview(Path.GetFileName(file.FileName), database.Overview());
-
-            lock (sync)
+            if (new FileInfo(temporaryPath).Length > MaximumUploadBytes)
             {
-                var previousPath = currentPath;
-                currentPath = temporaryPath;
-                currentFileName = overview.FileName;
-                if (previousPath is not null && File.Exists(previousPath))
-                {
-                    File.Delete(previousPath);
-                }
+                throw new ArgumentException("Database files must be 10 MB or smaller.");
             }
 
+            using var database = new SqliteDatabase(temporaryPath);
+            var overview = new ExplorerOverview(SafeFileName(file.FileName), database.Overview());
+            File.Move(temporaryPath, databasePath);
+
+            var previousPath = session.Path;
+            if (previousPath is not null && File.Exists(previousPath))
+            {
+                File.Delete(previousPath);
+            }
+
+            session.Path = databasePath;
+            session.FileName = overview.FileName;
+            Touch(session);
             return overview;
         }
         catch
         {
-            if (File.Exists(temporaryPath))
+            foreach (var path in new[] { temporaryPath, databasePath })
             {
-                File.Delete(temporaryPath);
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
             }
 
             throw;
         }
-    }
-
-    public ExplorerOverview Overview()
-    {
-        using var database = OpenDatabase(out var fileName);
-        return new ExplorerOverview(fileName, database.Overview());
-    }
-
-    public QueryResult RunQuery(string query) => OpenDatabase(out _).Use(database => database.RunQuery(query));
-
-    public PageInspection InspectPage(int pageNumber) => OpenDatabase(out _).Use(database => database.InspectPage(pageNumber));
-
-    public IReadOnlyList<PageTreeNode> GetTableTree(string tableName) => OpenDatabase(out _).Use(database => database.GetTableTree(tableName));
-
-    private SqliteDatabase OpenDatabase(out string fileName)
-    {
-        lock (sync)
+        finally
         {
-            if (currentPath is null || currentFileName is null)
+            session.Gate.Release();
+        }
+    }
+
+    public ExplorerOverview Overview(string sessionId)
+    {
+        return UseDatabase(sessionId, (database, fileName) => new ExplorerOverview(fileName, database.Overview()));
+    }
+
+    public QueryResult RunQuery(string sessionId, string query) =>
+        UseDatabase(sessionId, (database, _) => database.RunQuery(query));
+
+    public PageInspection InspectPage(string sessionId, int pageNumber) =>
+        UseDatabase(sessionId, (database, _) => database.InspectPage(pageNumber));
+
+    public IReadOnlyList<PageTreeNode> GetTableTree(string sessionId, string tableName) =>
+        UseDatabase(sessionId, (database, _) => database.GetTableTree(tableName));
+
+    private TResult UseDatabase<TResult>(string sessionId, Func<SqliteDatabase, string, TResult> action)
+    {
+        var session = GetSession(sessionId);
+        session.Gate.Wait();
+        try
+        {
+            if (session.Path is null || session.FileName is null || !File.Exists(session.Path))
             {
                 throw new InvalidOperationException("Upload a SQLite database before using the explorer.");
             }
 
-            fileName = currentFileName;
-            return new SqliteDatabase(currentPath);
+            Touch(session);
+            using var database = new SqliteDatabase(session.Path);
+            return action(database, session.FileName);
+        }
+        finally
+        {
+            session.Gate.Release();
         }
     }
 
     private static void ValidateUpload(IFormFile file)
     {
+        ArgumentNullException.ThrowIfNull(file);
+
         if (file.Length == 0)
         {
             throw new ArgumentException("Choose a non-empty database file.");
@@ -98,23 +126,145 @@ public sealed class ExplorerStore
             throw new ArgumentException("Database files must be 10 MB or smaller.");
         }
 
-        var extension = Path.GetExtension(file.FileName);
+        var extension = Path.GetExtension(file.FileName.Replace('\\', '/'));
         if (!SupportedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
             throw new ArgumentException("Choose a .db, .sqlite, or .sqlite3 file.");
         }
     }
+
+    private SessionDatabase GetOrCreateSession(string sessionId)
+    {
+        ValidateSessionId(sessionId);
+        lock (sync)
+        {
+            var session = sessions.GetOrAdd(sessionId, static _ => new SessionDatabase());
+            Touch(session);
+            return session;
+        }
+    }
+
+    private SessionDatabase GetSession(string sessionId)
+    {
+        CleanupExpiredSessions();
+        ValidateSessionId(sessionId);
+        lock (sync)
+        {
+            if (!sessions.TryGetValue(sessionId, out var session))
+            {
+                throw new InvalidOperationException("Upload a SQLite database before using the explorer.");
+            }
+
+            Touch(session);
+            return session;
+        }
+    }
+
+    public void CleanupExpiredSessions()
+    {
+        var expirationTicks = DateTime.UtcNow.Subtract(SessionRetention).Ticks;
+        lock (sync)
+        {
+            foreach (var (sessionId, session) in sessions)
+            {
+                if (Interlocked.Read(ref session.LastAccessUtcTicks) >= expirationTicks || !session.Gate.Wait(0))
+                {
+                    continue;
+                }
+
+                var removed = false;
+                try
+                {
+                    if (Interlocked.Read(ref session.LastAccessUtcTicks) < expirationTicks
+                        && sessions.TryRemove(sessionId, out _))
+                    {
+                        removed = true;
+                        if (session.Path is not null && File.Exists(session.Path))
+                        {
+                            File.Delete(session.Path);
+                        }
+                    }
+                }
+                finally
+                {
+                    session.Gate.Release();
+                    if (removed)
+                    {
+                        session.Dispose();
+                    }
+                }
+            }
+        }
+    }
+
+    private static void Touch(SessionDatabase session) =>
+        Interlocked.Exchange(ref session.LastAccessUtcTicks, DateTime.UtcNow.Ticks);
+
+    private void DeleteExpiredOrphanedUploads()
+    {
+        var expiration = DateTime.UtcNow.Subtract(SessionRetention);
+        foreach (var path in Directory.EnumerateFiles(uploadsDirectory))
+        {
+            if (File.GetLastWriteTimeUtc(path) < expiration)
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        foreach (var session in sessions.Values)
+        {
+            session.Dispose();
+        }
+    }
+
+    private static void ValidateSessionId(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            throw new InvalidOperationException("Upload a SQLite database before using the explorer.");
+        }
+    }
+
+    private static string SafeFileName(string fileName)
+    {
+        var safeName = Path.GetFileName(fileName.Replace('\\', '/'));
+        return string.IsNullOrWhiteSpace(safeName) ? "database.sqlite" : safeName;
+    }
+
+    private sealed class SessionDatabase : IDisposable
+    {
+        public readonly SemaphoreSlim Gate = new(1, 1);
+        public string? Path;
+        public string? FileName;
+        public long LastAccessUtcTicks;
+
+        public void Dispose() => Gate.Dispose();
+    }
 }
 
 public sealed record ExplorerOverview(string FileName, DatabaseOverview Database);
 
-internal static class SqliteDatabaseExtensions
+public sealed partial class UploadCleanupService(ExplorerStore store, ILogger<UploadCleanupService> logger) : BackgroundService
 {
-    public static TResult Use<TResult>(this SqliteDatabase database, Func<SqliteDatabase, TResult> action)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using (database)
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
         {
-            return action(database);
+            try
+            {
+                store.CleanupExpiredSessions();
+            }
+            catch (IOException exception)
+            {
+                LogCleanupFailed(logger, exception);
+            }
         }
     }
+
+    [LoggerMessage(EventId = 1, Level = LogLevel.Error, Message = "Could not remove expired SQLite uploads.")]
+    private static partial void LogCleanupFailed(ILogger logger, Exception exception);
 }
