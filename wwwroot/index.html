@@ -5,127 +5,156 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Explore SQLite database files through a custom read-only parser."
+      content="Explore SQLite tables and pages with a read-only C# file parser."
     />
     <title>SQLite Under the Hood</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="/">SQLite <span>Under the Hood</span></a>
-      <p>Read a SQLite file through a custom parser. Nothing is modified.</p>
+      <a class="brand" href="/" aria-label="SQLite Under the Hood home">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span>SQLite <strong>Under the Hood</strong></span>
+      </a>
+      <span class="read-only-badge">Read-only explorer</span>
     </header>
 
     <main>
-      <section class="upload-panel" aria-labelledby="upload-title">
-        <div>
-          <p class="eyebrow">CUSTOM SQLITE FILE READER</p>
-          <h1 id="upload-title">Inspect the structure behind a database.</h1>
-          <p class="muted">
-            Open a local SQLite file to examine headers, tables, B-tree pages,
-            records, and a limited safe subset of <code>SELECT</code>.
+      <section class="intro" aria-labelledby="page-title">
+        <div class="intro-copy">
+          <p class="eyebrow">A closer look at SQLite files</p>
+          <h1 id="page-title">See what’s inside your database.</h1>
+          <p>
+            Open a SQLite file to inspect its tables, run a small read-only
+            query, or follow the pages that store its records.
           </p>
         </div>
-        <form id="upload-form">
-          <label class="file-picker" for="database-file"
-            >Choose a SQLite database<input
-              id="database-file"
-              name="file"
-              type="file"
-              accept=".db,.sqlite,.sqlite3"
-              required
-          /></label>
+        <form id="upload-form" class="upload-card">
+          <label for="database-file">Choose a database file</label>
+          <input
+            id="database-file"
+            name="file"
+            type="file"
+            accept=".db,.sqlite,.sqlite3"
+            required
+          />
           <button class="primary" type="submit">Open database</button>
-          <p class="hint">
-            .db, .sqlite, or .sqlite3 · maximum 10 MB · read-only · isolated to
-            this browser session; expires after 30 minutes idle
+          <p class="field-note">.db, .sqlite, or .sqlite3 · up to 10 MB</p>
+          <p class="privacy-note">
+            Public demo: uploads are temporary. Don’t upload sensitive files.
           </p>
+          <a
+            class="sample-link"
+            href="https://github.com/wrenchfry/custom-database-manager/raw/refs/heads/master/sample.db"
+            download
+          >Download the sample database</a>
         </form>
       </section>
 
-      <p id="status" class="status" aria-live="polite">
-        Choose a database file to begin.
+      <p id="status" class="status" role="status" aria-live="polite">
+        Choose a database file to get started.
       </p>
 
-      <section id="workspace" hidden>
-        <section class="summary" aria-labelledby="summary-title">
-          <div>
+      <section id="workspace" hidden aria-label="Database explorer">
+        <section class="database-summary" aria-labelledby="summary-title">
+          <div class="summary-file">
             <p class="eyebrow">OPEN DATABASE</p>
             <h2 id="summary-title"><span id="file-name">—</span></h2>
           </div>
           <dl id="metadata" class="metadata"></dl>
         </section>
 
-        <div class="workspace-grid">
-          <aside class="panel table-panel" aria-labelledby="tables-title">
-            <h2 id="tables-title">Tables</h2>
-            <p class="muted">Schemas discovered by the custom reader.</p>
-            <div id="tables"></div>
+        <div class="explorer-layout">
+          <aside class="table-sidebar" aria-labelledby="tables-title">
+            <div class="section-heading">
+              <h2 id="tables-title">Tables</h2>
+              <span id="table-count" class="count-badge">0</span>
+            </div>
+            <p class="muted">Choose a table to explore its rows or pages.</p>
+            <div id="tables" class="table-list"></div>
           </aside>
 
-          <section class="main-panel">
-            <section class="panel" aria-labelledby="query-title">
-              <div class="panel-heading">
-                <h2 id="query-title">Limited query runner</h2>
-                <span>SELECT only</span>
+          <section class="explorer-main" aria-label="Selected table">
+            <div class="table-toolbar">
+              <div>
+                <p class="eyebrow">SELECTED TABLE</p>
+                <h2 id="selected-table">Choose a table</h2>
               </div>
-              <p class="muted">
-                Supports selected columns, <code>count(*)</code>, and one
-                equality <code>WHERE</code> condition. Results are capped at 500
-                rows.
-              </p>
+              <div class="view-switch" aria-label="Explore table">
+                <button
+                  type="button"
+                  class="view-button active"
+                  data-view="query"
+                  aria-pressed="true"
+                >Rows &amp; query</button>
+                <button
+                  type="button"
+                  class="view-button"
+                  data-view="tree"
+                  aria-pressed="false"
+                >Storage pages</button>
+              </div>
+            </div>
+
+            <section id="query-view" class="view-panel" aria-labelledby="query-title">
+              <div class="panel-intro">
+                <h3 id="query-title">Query rows</h3>
+                <p>
+                  Try <code>SELECT *</code>, chosen columns,
+                  <code>count(*)</code>, or one equality filter.
+                </p>
+              </div>
               <form id="query-form">
-                <label class="sr-only" for="sql">SQL query</label>
-                <textarea id="sql" spellcheck="false">
-SELECT * FROM apples</textarea>
-                <button class="primary" type="submit">
-                  Run with custom reader
-                </button>
+                <label class="sr-only" for="sql">Read-only SQL query</label>
+                <textarea id="sql" spellcheck="false" disabled></textarea>
+                <button class="primary" type="submit" disabled>Run query</button>
               </form>
               <div id="query-output" class="output empty">
-                Choose a table or run a supported query.
+                Choose a table to start.
               </div>
             </section>
 
-            <section class="panel" aria-labelledby="tree-title">
-              <div class="panel-heading">
-                <h2 id="tree-title">Table B-tree</h2>
-                <span id="tree-label">Select a table</span>
+            <section
+              id="tree-view"
+              class="view-panel"
+              aria-labelledby="tree-title"
+              hidden
+            >
+              <div class="panel-intro">
+                <h3 id="tree-title">How the table is stored</h3>
+                <p>
+                  Each card is a page in the table’s B-tree. Child-page links
+                  show how SQLite connects the pages.
+                </p>
               </div>
-              <p class="muted">
-                Each card is a page visited while traversing the selected
-                table’s B-tree.
-              </p>
-              <div id="tree-output" class="output empty">
-                No table selected.
+              <div id="tree-output" class="tree-output empty">
+                Choose a table to inspect its storage pages.
               </div>
             </section>
           </section>
-
-          <aside class="panel page-panel" aria-labelledby="page-title">
-            <h2 id="page-title">Page inspector</h2>
-            <form id="page-form" class="page-form">
-              <label for="page-number">Page number</label>
-              <div>
-                <input
-                  id="page-number"
-                  type="number"
-                  min="1"
-                  value="1"
-                /><button type="submit">Inspect</button>
-              </div>
-            </form>
-            <div id="page-output" class="output empty">
-              Inspect a page to view its B-tree type, cells, and raw bytes.
-            </div>
-          </aside>
         </div>
       </section>
     </main>
 
+    <dialog id="page-dialog" class="page-dialog" aria-labelledby="page-dialog-title">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">STORAGE PAGE</p>
+          <h2 id="page-dialog-title">Page details</h2>
+        </div>
+        <button
+          id="close-page-dialog"
+          class="icon-button"
+          type="button"
+          aria-label="Close page details"
+        >×</button>
+      </div>
+      <div id="page-output" class="page-output"></div>
+    </dialog>
+
     <footer>
-      Uploaded files are isolated by browser session and removed after 30
-      minutes of inactivity. The custom reader never modifies them.
+      Files are read without modification and removed after 30 minutes of
+      inactivity.
     </footer>
     <script src="app.js"></script>
   </body>
