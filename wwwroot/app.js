@@ -131,7 +131,7 @@ function renderOverview(response) {
   }
 }
 
-function selectTable(index, runQuery = false) {
+function selectTable(index, runQuery = true) {
   const table = tables[index];
   if (!table) {
     return;
